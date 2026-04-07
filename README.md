@@ -3,63 +3,125 @@
 独立部署的 `sub2api` 邀请返利嵌入页，包含：
 
 - Vue 3 + Vite 前端
-- Node.js + Express 后端
+- Node.js + Express + SQLite 后端
 - Docker Compose 一键部署
 - 与 `sub2api` 自定义嵌入页参数兼容
 
-## 功能
+## 当前状态
 
-当前版本提供：
+当前版本已经不是纯 mock 前端，而是一个**前后端完整可运行版本**：
 
-- 邀请返利首页 UI
-- 支持读取 `sub2api` 传入的嵌入参数
-- 后端 `GET /api/invite/dashboard` 接口
-- 前端通过 `/api/...` 真实请求后端
-- 可直接用 Docker Compose 部署
+- 前端页面展示邀请返利仪表盘
+- 后端提供真实 HTTP API
+- SQLite 持久化存储邀请用户、返利记录
+- 自动初始化数据库和示例种子数据
+- 可直接用 Docker Compose 启动
 
-## 嵌入参数
+## 项目结构
 
-与 `sub2api` 的 embedded custom page 机制保持兼容：
+```text
+.
+├── src/                 # Vue 前端
+├── server/
+│   ├── src/
+│   │   ├── db.js        # SQLite 初始化
+│   │   ├── seed.js      # 种子数据
+│   │   └── index.js     # Express API
+│   └── Dockerfile
+├── docker/
+│   └── nginx.conf
+├── Dockerfile           # 前端生产镜像
+└── docker-compose.yml
+```
+
+## API
+
+### 健康检查
+
+```http
+GET /api/health
+```
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "service": "sub2api-invite-server",
+  "dbPath": "/app/data/invite.db"
+}
+```
+
+### 邀请返利首页数据
+
+```http
+GET /api/invite/dashboard
+```
+
+支持 query 参数：
 
 - `user_id`
 - `token`
 - `theme`
 - `lang`
 - `ui_mode`
-- `src_host`
-- `src_url`
+- `source`
+- `src_host`（兼容保留）
 
-示例：
+请求示例：
 
 ```text
-https://your-invite-site.example.com/?user_id=123&token=abc&theme=dark&lang=zh-CN&ui_mode=embedded&src_host=https://your-sub2api.example.com&src_url=https://your-sub2api.example.com/#/invite
+/api/invite/dashboard?user_id=10001&token=demo-token-10001&theme=dark&lang=zh&ui_mode=embedded&source=https://your-sub2api.example.com
 ```
+
+## 数据库
+
+当前使用 SQLite，数据文件位置：
+
+```text
+server/data/invite.db
+```
+
+表：
+
+- `users`
+- `invite_records`
+- `reward_records`
+
+### 当前后端逻辑
+
+- 如果 `user_id` 已存在：返回该用户邀请返利数据
+- 如果 `user_id` 不存在：自动创建一个演示用户
+- 如果传了 `token` 且与库内 token 不一致：返回 `401`
+
+这意味着你已经有了一个很容易继续升级的最小真后端。
 
 ## 本地开发
 
-### 前端
+### 1. 前端
 
 ```bash
 npm install
 npm run dev
 ```
 
-### 后端
+### 2. 后端
 
 ```bash
 cd server
 npm install
+npm run seed
 npm run dev
 ```
 
-默认：
+默认端口：
 
-- 前端开发端口：`4177`
-- 后端端口：`8080`
+- 前端：`4177`
+- 后端：`8080`
 
 ## Docker Compose 部署
 
-在项目根目录执行：
+项目根目录执行：
 
 ```bash
 docker compose up -d --build
@@ -68,52 +130,57 @@ docker compose up -d --build
 启动后：
 
 - 前端：`http://localhost:4177`
-- 后端：`http://localhost:8080/api/health`
+- 后端健康检查：`http://localhost:8080/api/health`
 
-## 生产部署建议
+### 数据持久化
 
-### 前端容器
+Compose 已挂载 volume：
 
-- Nginx 提供静态文件
-- `/api/` 自动反向代理到后端容器
+- `invite_data:/app/data`
 
-### 后端容器
-
-当前是 mock / reserved API 版本。
-后续你只需要把 `server/src/index.js` 里的 `createDashboard()` 替换成：
-
-- 查数据库
-- 或调用 `sub2api` / 你的主业务服务
-- 或接你自己的用户返佣系统
-
-## 接入真实业务时建议的数据来源
-
-建议后端最终接入以下能力：
-
-- 用户信息校验：根据 `user_id + token` 做鉴权
-- 邀请码查询
-- 被邀请用户列表
-- 返佣记录列表
-- 待结算/已结算金额统计
-- 提现记录（如果你后续要加）
+因此容器重建后 SQLite 数据仍会保留。
 
 ## 与 sub2api 集成方式
 
-你已经选的是“像支付系统一样做外部嵌入页”，所以推荐方式是：
+推荐使用你之前定下来的方式：**像支付系统一样走外部嵌入页**。
 
-1. 将本项目部署到独立域名
-2. 在 `sub2api` 后台配置一个用户侧自定义页面
-3. 页面 URL 指向本项目部署地址
-4. `sub2api` 会自动在 iframe URL 上附加 embedded 参数
-5. 本项目读取参数并请求自己的后端接口
+### 接入步骤
 
-## 后续可扩展
+1. 部署本项目到独立域名
+2. 在 `sub2api` 后台添加用户自定义页面
+3. URL 填你部署后的前端地址
+4. `sub2api` 会在 iframe 地址后自动附加用户参数
+5. 本项目读取 query 参数并请求自己的后端 API
 
-后续我可以继续帮你补：
+### 示例嵌入 URL
 
-- 登录鉴权签名校验
-- MySQL / PostgreSQL 持久化
-- 邀请链接复制与二维码生成
-- 提现申请页面
-- 多级分销规则配置
-- 管理后台
+```text
+https://invite.example.com/?user_id=10001&token=demo-token-10001&theme=dark&lang=zh&ui_mode=embedded&source=https://sub2api.example.com
+```
+
+## 后续接真实业务建议
+
+你下一步如果要继续做正式生产版，优先级建议是：
+
+1. 把 `user_id + token` 改成真实签名校验
+2. 接 MySQL / PostgreSQL
+3. 对接主站订单表与用户表
+4. 加返佣规则配置
+5. 增加提现申请 / 审核流程
+6. 增加管理后台
+
+## 我已经替你做好的部分
+
+- 前端从 mock 改为真实请求后端
+- Express API 已打通
+- SQLite 已落地
+- 种子数据已提供
+- Docker Compose 已可用
+- README 已补齐
+
+如果你要，我下一步还可以继续把这套后端直接升级成：
+
+- MySQL 版
+- 带管理员接口版
+- 带登录签名校验版
+- 可提现版
