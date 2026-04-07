@@ -1,0 +1,22 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sub2api-invite-frontend
+    depends_on:
+      - backend
+    ports:
+      - "4177:80"
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: sub2api-invite-backend
+    environment:
+      PORT: 8080
+      HOST: 0.0.0.0
+      CORS_ORIGIN: "*"
+    ports:
+      - "8080:8080"

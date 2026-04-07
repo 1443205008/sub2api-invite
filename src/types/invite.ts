@@ -24,9 +24,9 @@ export interface InviteRecord {
 
 export interface RewardRecord {
   id: string
-  type: string
+  type: 'commission' | 'bonus' | 'adjustment'
   amount: number
-  status: 'settled' | 'pending'
+  status: 'pending' | 'settled'
   createdAt: string
   note: string
 }
@@ -37,4 +37,9 @@ export interface InviteDashboard {
   stats: InviteStats
   inviteRecords: InviteRecord[]
   rewardRecords: RewardRecord[]
+}
+
+export interface InviteDashboardResponse {
+  success: boolean
+  data: InviteDashboard
 }
